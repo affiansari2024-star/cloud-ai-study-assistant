@@ -40,7 +40,6 @@ s3_client = boto3.client(
 )
 
 def upload_to_s3(file_bytes, filename):
-    # Wrap bytes in a fresh BytesIO stream so boto3 closing it doesn't affect anything else
     s3_client.upload_fileobj(io.BytesIO(file_bytes), BUCKET_NAME, filename)
 
 def extract_and_chunk(file_bytes, chunk_size=500):
@@ -58,7 +57,6 @@ def get_embeddings(texts):
     )
     return np.array([e.values for e in response.embeddings], dtype="float32")
 
-
 # Sidebar for Cloud Upload
 with st.sidebar:
     st.header("1. Upload Course Material")
@@ -66,7 +64,6 @@ with st.sidebar:
 
     if uploaded_file and st.button("Process & Sync to AWS S3"):
         with st.spinner("Uploading to AWS S3 & indexing with Gemini..."):
-            # Read raw bytes once so both S3 and PyPDF can read safely
             file_bytes = uploaded_file.getvalue()
 
             # 1. Store file in AWS S3 Cloud Storage
@@ -75,7 +72,7 @@ with st.sidebar:
             # 2. Extract text and create Vector Index
             chunks = extract_and_chunk(file_bytes)
             embeddings = get_embeddings(chunks)
-            index = faiss.IndexFlatL2(embeddings.shape)
+            index = faiss.IndexFlatL2(embeddings.shape[1])
             index.add(embeddings)
 
             st.session_state["chunks"] = chunks
@@ -93,7 +90,7 @@ if question:
         with st.spinner("Searching cloud index & generating answer..."):
             q_emb = get_embeddings([question])
             _, indices = st.session_state["index"].search(q_emb, k=3)
-            context = "\n\n".join([st.session_state["chunks"][i] for i in indices])
+            context = "\n\n".join([st.session_state["chunks"][i] for i in indices[0]])
 
             prompt = f"""Answer the question strictly using the provided study notes context.
             If the answer is not in the notes, say so clearly.
