@@ -53,10 +53,11 @@ def extract_and_chunk(file_bytes, chunk_size=500):
 
 def get_embeddings(texts):
     response = client.models.embed_content(
-        model="text-embedding-004",
+        model="gemini-embedding-001",
         contents=texts,
     )
     return np.array([e.values for e in response.embeddings], dtype="float32")
+
 
 # Sidebar for Cloud Upload
 with st.sidebar:
