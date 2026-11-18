@@ -1,3 +1,4 @@
+import io
 import os
 import boto3
 import numpy as np
@@ -11,7 +12,7 @@ st.set_page_config(page_title="Cloud AI Study Assistant", page_icon="☁️")
 st.title("☁️ Cloud-Hosted AI Study Assistant")
 st.caption("Powered by AWS S3 Object Storage, Streamlit Cloud & Gemini AI")
 
-# Safely load secrets (works both in Colab/local AND on Streamlit Cloud)
+# Safely load secrets
 def get_secret(key):
     try:
         if key in st.secrets:
@@ -26,7 +27,7 @@ AWS_SECRET_KEY = get_secret("AWS_SECRET_ACCESS_KEY")
 BUCKET_NAME = get_secret("AWS_BUCKET_NAME")
 
 if not GEMINI_API_KEY:
-    st.error("Please configure your API keys in Streamlit Secrets or environment variables.")
+    st.error("Please configure your API keys in Streamlit Secrets.")
     st.stop()
 
 client = genai.Client(api_key=GEMINI_API_KEY)
@@ -38,13 +39,12 @@ s3_client = boto3.client(
     aws_secret_access_key=AWS_SECRET_KEY,
 )
 
-def upload_to_s3(file_obj, filename):
-    file_obj.seek(0)
-    s3_client.upload_fileobj(file_obj, BUCKET_NAME, filename)
+def upload_to_s3(file_bytes, filename):
+    # Wrap bytes in a fresh BytesIO stream so boto3 closing it doesn't affect anything else
+    s3_client.upload_fileobj(io.BytesIO(file_bytes), BUCKET_NAME, filename)
 
-def extract_and_chunk(file_obj, chunk_size=500):
-    file_obj.seek(0)
-    reader = PdfReader(file_obj)
+def extract_and_chunk(file_bytes, chunk_size=500):
+    reader = PdfReader(io.BytesIO(file_bytes))
     full_text = ""
     for page in reader.pages:
         full_text += (page.extract_text() or "") + "\n"
@@ -65,11 +65,14 @@ with st.sidebar:
 
     if uploaded_file and st.button("Process & Sync to AWS S3"):
         with st.spinner("Uploading to AWS S3 & indexing with Gemini..."):
+            # Read raw bytes once so both S3 and PyPDF can read safely
+            file_bytes = uploaded_file.getvalue()
+
             # 1. Store file in AWS S3 Cloud Storage
-            upload_to_s3(uploaded_file, uploaded_file.name)
+            upload_to_s3(file_bytes, uploaded_file.name)
             
             # 2. Extract text and create Vector Index
-            chunks = extract_and_chunk(uploaded_file)
+            chunks = extract_and_chunk(file_bytes)
             embeddings = get_embeddings(chunks)
             index = faiss.IndexFlatL2(embeddings.shape)
             index.add(embeddings)
